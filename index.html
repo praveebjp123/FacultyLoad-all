@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Excel Upload and Show Data by Praveen Badami Darbar college Bijapur</title>
+    <title>Excel Upload and Show Data</title>
     <!-- Bootstrap 4 CDN for responsive design -->
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <!-- SheetJS CDN for reading Excel files -->
@@ -27,6 +27,9 @@
             margin-top: 30px;
             display: none;
         }
+        #student-count {
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
@@ -40,8 +43,16 @@
                 <label for="excel-file">Upload Excel File</label>
                 <input type="file" id="excel-file" class="form-control" accept=".xlsx, .xls" required>
             </div>
-            <button type="submit" class="btn btn-primary btn-block">Upload and Show Data</button>
+            <button type="submit" class="btn btn-primary btn-block">Show data</button>
         </form>
+
+        <!-- Filter by Course -->
+        <div id="filter-course" class="form-group" style="display: none;">
+            <label for="course-name">Filter by Course Name</label>
+            <select id="course-name" class="form-control">
+                <option value="">Select Course</option>
+            </select>
+        </div>
 
         <!-- Table to display the data -->
         <div id="output-table" style="display: none;">
@@ -49,6 +60,7 @@
             <table class="table table-striped table-bordered">
                 <thead>
                     <tr>
+                        <th>Student Reg No</th>
                         <th>Student Name</th>
                         <th>Course Name</th>
                         <th>C1 Marks</th>
@@ -60,6 +72,9 @@
                 </thead>
                 <tbody id="data-table-body"></tbody>
             </table>
+            <div id="student-count">
+                <h5>Total Students: <span id="total-students">0</span></h5>
+            </div>
         </div>
     </div>
 
@@ -87,13 +102,17 @@
                     const sheet = workbook.Sheets[workbook.SheetNames[0]];
                     const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-                    console.log(jsonData); // Log data to inspect its structure
-                    
                     // Process data: Filter for C1, Test, C2, and Assignment and calculate the total marks
                     const processedData = processData(jsonData);
 
+                    // Display the course filter dropdown
+                    showCourseFilter(processedData.courses);
+
                     // Display the table with processed data
-                    showDataInTable(processedData);
+                    showDataInTable(processedData.data);
+
+                    // Show the output table
+                    document.getElementById('output-table').style.display = 'block';
                 };
 
                 reader.readAsArrayBuffer(file);
@@ -103,17 +122,15 @@
         // Function to process Excel data and filter for C1, Test, C2, and Assignment
         function processData(data) {
             const result = [];
+            const coursesSet = new Set();
             let studentCourseMap = {};
 
-            // Log data to check the structure of the input
-            console.log("Processing data:", data);
-            
-            // Skip the header and iterate through rows (assuming data starts from row 2)
+            // Process each row
             for (let i = 1; i < data.length; i++) {
                 const row = data[i];
-                console.log("Row data:", row);  // Log each row for debugging
 
                 // Extract columns based on your mapping:
+                const studentRegNo = row[1]; // Student Registration Number (B2 - column 1)
                 const studentName = row[2]; // Student Name (C2 - column 2)
                 const courseName = row[5];  // Course Name (F2 - column 5)
                 const evaluationComponent = row[7]; // Evaluation Component (H2 - column 7)
@@ -122,48 +139,55 @@
                 // Skip rows without relevant data
                 if (!studentName || !courseName || isNaN(marksScored)) continue;
 
+                // Add course to the set for filtering
+                coursesSet.add(courseName);
+
                 // Initialize student-course data structure if not already initialized
-                if (!studentCourseMap[studentName]) {
-                    studentCourseMap[studentName] = {};
+                if (!studentCourseMap[studentRegNo]) {
+                    studentCourseMap[studentRegNo] = {};
                 }
 
-                if (!studentCourseMap[studentName][courseName]) {
-                    studentCourseMap[studentName][courseName] = { C1: 0, Test: 0, C2: 0, Assignment: 0 };
+                if (!studentCourseMap[studentRegNo][courseName]) {
+                    studentCourseMap[studentRegNo][courseName] = { studentName, C1: 0, Test: 0, C2: 0, Assignment: 0 };
                 }
 
-                // Add marks to C1, Test, C2 or Assignment based on the evaluation component
+                // Add marks to C1, Test, C2, or Assignment based on the evaluation component
                 if (evaluationComponent === 'C1') {
-                    studentCourseMap[studentName][courseName].C1 += marksScored;
+                    studentCourseMap[studentRegNo][courseName].C1 += marksScored;
                 } else if (evaluationComponent === 'Test') {
-                    studentCourseMap[studentName][courseName].Test += marksScored;
+                    studentCourseMap[studentRegNo][courseName].Test += marksScored;
                 } else if (evaluationComponent === 'C2') {
-                    studentCourseMap[studentName][courseName].C2 += marksScored;
+                    studentCourseMap[studentRegNo][courseName].C2 += marksScored;
                 } else if (evaluationComponent === 'Assignment') {
-                    studentCourseMap[studentName][courseName].Assignment += marksScored;
+                    studentCourseMap[studentRegNo][courseName].Assignment += marksScored;
                 }
             }
 
             // Prepare the result for table display
-            for (const studentName in studentCourseMap) {
-                for (const courseName in studentCourseMap[studentName]) {
-                    const { C1, Test, C2, Assignment } = studentCourseMap[studentName][courseName];
+            for (const studentRegNo in studentCourseMap) {
+                for (const courseName in studentCourseMap[studentRegNo]) {
+                    const { studentName, C1, Test, C2, Assignment } = studentCourseMap[studentRegNo][courseName];
                     const totalMarks = C1 + Test + C2 + Assignment;
-                    result.push({ studentName, courseName, C1, Test, C2, Assignment, Total: totalMarks });
+                    result.push({ studentRegNo, studentName, courseName, C1, Test, C2, Assignment, Total: totalMarks });
                 }
             }
 
-            return result;
+            return { data: result, courses: Array.from(coursesSet) };
         }
 
         // Function to show data in a table
         function showDataInTable(data) {
             const tableBody = document.getElementById('data-table-body');
-            tableBody.innerHTML = ''; // Clear any existing data
+            const studentCount = document.getElementById('total-students');
 
-            // Loop through the data and create rows for the table
+            // Clear any existing data
+            tableBody.innerHTML = '';
+
+            // Display the processed data in the table
             data.forEach(item => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
+                    <td>${item.studentRegNo}</td>
                     <td>${item.studentName}</td>
                     <td>${item.courseName}</td>
                     <td>${item.C1.toFixed(2)}</td>
@@ -175,11 +199,42 @@
                 tableBody.appendChild(row);
             });
 
-            // Show the table after processing and hide the button
-            document.getElementById('output-table').style.display = 'block';
+            // Show the total number of students
+            studentCount.textContent = data.length;
         }
+
+        // Function to show course filter dropdown
+        function showCourseFilter(courses) {
+            const courseSelect = document.getElementById('course-name');
+            courseSelect.innerHTML = '<option value="">Select Course</option>'; // Reset filter options
+
+            // Populate the course dropdown
+            courses.forEach(course => {
+                const option = document.createElement('option');
+                option.value = course;
+                option.textContent = course;
+                courseSelect.appendChild(option);
+            });
+
+            // Show the course filter dropdown
+            document.getElementById('filter-course').style.display = 'block';
+        }
+
+        // Filter data by selected course
+        document.getElementById('course-name').addEventListener('change', function() {
+            const selectedCourse = this.value;
+            const rows = Array.from(document.getElementById('data-table-body').rows);
+
+            rows.forEach(row => {
+                const courseCell = row.cells[2].textContent;
+                row.style.display = (selectedCourse === '' || courseCell === selectedCourse) ? '' : 'none';
+            });
+
+            // Update total students after filtering
+            const visibleRows = rows.filter(row => row.style.display !== 'none');
+            document.getElementById('total-students').textContent = visibleRows.length;
+        });
     </script>
 
 </body>
 </html>
-
